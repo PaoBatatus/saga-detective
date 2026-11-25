@@ -11,3 +11,18 @@ spring.flyway.enabled=true
 spring.flyway.locations=classpath:db/migration
 
 spring.jackson.deserialization.fail-on-unknown-properties=true
+
+# Profile ativo: basic-security ou oauth-security
+spring.profiles.active=oauth-security
+
+# Usados so no profile oauth-security
+# O segredo do JWT precisa ter 32 caracteres ou mais
+# O segredo do cliente nao pode ter o caractere arroba
+app.jwt.secret=COLOQUE_UM_SEGREDO_COM_MAIS_DE_32_CARACTERES
+app.jwt.expiration-seconds=900
+app.jwt.refresh-expiration-seconds=86400
+app.oauth.client-id=angular
+app.oauth.client-secret=COLOQUE_O_SEGREDO_DO_CLIENTE
+
+# Cookie do refresh token: use true quando a API rodar com HTTPS
+app.security.https-enabled=false
