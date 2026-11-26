@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.demo.config.ClienteOAuthProperties;
+import com.example.demo.config.ClienteOAuthProperties.Cliente;
 import com.example.demo.exceptionhandler.SagaExceptionHandler.Erro;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -69,17 +72,14 @@ public class TokenResource {
     @Autowired
     private UserDetailsService userDetailsService;
 
+    @Autowired
+    private ClienteOAuthProperties clientesProperties;
+
     @Value("${app.jwt.expiration-seconds:900}")
     private long accessTokenSegundos;
 
     @Value("${app.jwt.refresh-expiration-seconds:86400}")
     private long refreshTokenSegundos;
-
-    @Value("${app.oauth.client-id}")
-    private String clientId;
-
-    @Value("${app.oauth.client-secret}")
-    private String clientSecret;
 
     @Value("${app.security.https-enabled:false}")
     private boolean httpsHabilitado;
@@ -93,21 +93,22 @@ public class TokenResource {
             @CookieValue(name = COOKIE_REFRESH_TOKEN, required = false) String refreshTokenDoCookie,
             HttpServletRequest request, HttpServletResponse response) {
 
-        if (!clienteValido(authorization)) {
+        Optional<Cliente> cliente = autenticarCliente(authorization);
+        if (cliente.isEmpty()) {
             return erro(HttpStatus.UNAUTHORIZED, "Cliente não autorizado",
                     "Credenciais do cliente ausentes ou inválidas");
         }
 
         return switch (grantType) {
-            case "password" -> tokenPorSenha(username, password, request, response);
-            case "refresh_token" -> tokenPorRefreshToken(refreshTokenDoCookie, request, response);
+            case "password" -> tokenPorSenha(cliente.get(), username, password, request, response);
+            case "refresh_token" -> tokenPorRefreshToken(cliente.get(), refreshTokenDoCookie, request, response);
             default -> erro(HttpStatus.BAD_REQUEST, "Tipo de autorização não suportado",
                     "Use grant_type=password ou grant_type=refresh_token");
         };
     }
 
-    private ResponseEntity<?> tokenPorSenha(String username, String password, HttpServletRequest request,
-            HttpServletResponse response) {
+    private ResponseEntity<?> tokenPorSenha(Cliente cliente, String username, String password,
+            HttpServletRequest request, HttpServletResponse response) {
         if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
             return erro(HttpStatus.BAD_REQUEST, "Informe usuário e senha",
                     "Os parâmetros username e password são obrigatórios");
@@ -125,11 +126,11 @@ public class TokenResource {
                 .map(GrantedAuthority::getAuthority)
                 .toList();
 
-        return ResponseEntity.ok(emitirTokens(autenticacao.getName(), papeis, request, response));
+        return ResponseEntity.ok(emitirTokens(cliente, autenticacao.getName(), papeis, request, response));
     }
 
-    private ResponseEntity<?> tokenPorRefreshToken(String refreshToken, HttpServletRequest request,
-            HttpServletResponse response) {
+    private ResponseEntity<?> tokenPorRefreshToken(Cliente cliente, String refreshToken,
+            HttpServletRequest request, HttpServletResponse response) {
         if (!StringUtils.hasText(refreshToken)) {
             return erro(HttpStatus.BAD_REQUEST, "Informe o refresh token",
                     "O cookie refreshToken nao foi enviado");
@@ -140,6 +141,12 @@ public class TokenResource {
             jwt = refreshTokenDecoder.decode(refreshToken);
         } catch (JwtException ex) {
             return erro(HttpStatus.BAD_REQUEST, "Refresh token inválido ou expirado", ex.getMessage());
+        }
+
+        // O refresh token so vale para o cliente que o recebeu
+        if (!cliente.getId().equals(jwt.getClaimAsString("client_id"))) {
+            return erro(HttpStatus.BAD_REQUEST, "Refresh token inválido ou expirado",
+                    "O refresh token pertence a outro cliente");
         }
 
         // Recarrega o usuario: se ele foi removido ou desativado, o token deixa de servir
@@ -158,21 +165,22 @@ public class TokenResource {
                 .map(GrantedAuthority::getAuthority)
                 .toList();
 
-        return ResponseEntity.ok(emitirTokens(usuario.getUsername(), papeis, request, response));
+        return ResponseEntity.ok(emitirTokens(cliente, usuario.getUsername(), papeis, request, response));
     }
 
-    private TokenResponse emitirTokens(String usuario, List<String> papeis, HttpServletRequest request,
-            HttpServletResponse response) {
+    private TokenResponse emitirTokens(Cliente cliente, String usuario, List<String> papeis,
+            HttpServletRequest request, HttpServletResponse response) {
         Instant agora = Instant.now();
         String jtiAccess = UUID.randomUUID().toString();
+        List<String> escopos = cliente.getScopes();
 
         JwtClaimsSet claimsAccess = JwtClaimsSet.builder()
                 .id(jtiAccess)
                 .subject(usuario)
                 .issuedAt(agora)
                 .expiresAt(agora.plusSeconds(accessTokenSegundos))
-                .claim("client_id", clientId)
-                .claim("scope", List.of("read", "write"))
+                .claim("client_id", cliente.getId())
+                .claim("scope", escopos)
                 .claim("authorities", papeis)
                 .claim("token_use", "access")
                 .build();
@@ -182,14 +190,15 @@ public class TokenResource {
                 .subject(usuario)
                 .issuedAt(agora)
                 .expiresAt(agora.plusSeconds(refreshTokenSegundos))
-                .claim("client_id", clientId)
+                .claim("client_id", cliente.getId())
                 .claim("token_use", "refresh")
                 .build();
 
         // O refresh token vai so no cookie HttpOnly, nunca no corpo da resposta
         adicionarRefreshTokenNoCookie(assinar(claimsRefresh), request, response);
 
-        return new TokenResponse(assinar(claimsAccess), "bearer", accessTokenSegundos, "read write", jtiAccess);
+        return new TokenResponse(assinar(claimsAccess), "bearer", accessTokenSegundos,
+                String.join(" ", escopos), jtiAccess);
     }
 
     private void adicionarRefreshTokenNoCookie(String refreshToken, HttpServletRequest request,
@@ -211,19 +220,33 @@ public class TokenResource {
                 .getTokenValue();
     }
 
-    private boolean clienteValido(String authorization) {
+    private Optional<Cliente> autenticarCliente(String authorization) {
         if (authorization == null || !authorization.startsWith("Basic ")) {
-            return false;
+            return Optional.empty();
         }
+
+        String recebido;
         try {
-            String recebido = new String(Base64.getDecoder().decode(authorization.substring(6)),
+            recebido = new String(Base64.getDecoder().decode(authorization.substring(6)),
                     StandardCharsets.UTF_8);
-            String esperado = clientId + ":" + clientSecret;
-            return MessageDigest.isEqual(recebido.getBytes(StandardCharsets.UTF_8),
-                    esperado.getBytes(StandardCharsets.UTF_8));
         } catch (IllegalArgumentException ex) {
-            return false;
+            return Optional.empty();
         }
+
+        int separador = recebido.indexOf(':');
+        if (separador < 0) {
+            return Optional.empty();
+        }
+
+        String id = recebido.substring(0, separador);
+        String segredo = recebido.substring(separador + 1);
+
+        return clientesProperties.getClients().stream()
+                .filter(c -> c.getId().equals(id))
+                .filter(c -> MessageDigest.isEqual(
+                        segredo.getBytes(StandardCharsets.UTF_8),
+                        c.getSecret().getBytes(StandardCharsets.UTF_8)))
+                .findFirst();
     }
 
     private ResponseEntity<Object> erro(HttpStatus status, String mensagemUsuario, String mensagemDesenvolvedor) {

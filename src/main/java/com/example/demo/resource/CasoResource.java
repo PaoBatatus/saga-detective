@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,11 +40,13 @@ public class CasoResource {
     private ApplicationEventPublisher publisher;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_CASO') and hasAuthority('SCOPE_read')")
     public Page<Caso> pesquisar(CasoFilter casoFilter, Pageable pageable) {
         return casoRepository.filtrar(casoFilter, pageable);
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_CASO') and hasAuthority('SCOPE_read')")
     public ResponseEntity<Caso> buscarPorId(@PathVariable Long id) {
         return casoRepository.findById(id)
                 .map(ResponseEntity::ok)
@@ -51,6 +54,7 @@ public class CasoResource {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_CADASTRAR_CASO') and hasAuthority('SCOPE_write')")
     public ResponseEntity<Caso> criar(@Valid @RequestBody Caso caso, HttpServletResponse response) {
         caso.setId(null);
         Caso salvo = casoRepository.save(caso);
@@ -61,6 +65,7 @@ public class CasoResource {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_CADASTRAR_CASO') and hasAuthority('SCOPE_write')")
     public ResponseEntity<Caso> atualizar(@PathVariable Long id, @Valid @RequestBody Caso caso) {
         Caso casoSalvo = casoService.atualizar(id, caso);
         return ResponseEntity.ok(casoSalvo);
@@ -68,12 +73,14 @@ public class CasoResource {
 
     @PutMapping("/{id}/ativo")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('ROLE_CADASTRAR_CASO') and hasAuthority('SCOPE_write')")
     public void atualizarPropriedadeAtivo(@PathVariable Long id, @RequestBody Boolean ativo) {
         casoService.atualizarPropriedadeAtivo(id, ativo);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('ROLE_REMOVER_CASO') and hasAuthority('SCOPE_write')")
     public void desativar(@PathVariable Long id) {
         casoService.desativar(id);
     }

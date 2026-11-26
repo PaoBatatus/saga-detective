@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +40,7 @@ public class SuspeitoResource {
     private ApplicationEventPublisher publisher;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_SUSPEITO') and hasAuthority('SCOPE_read')")
     public List<Suspeito> listar(@RequestParam(required = false) Long casoId) {
         if (casoId != null) {
             return suspeitoRepository.findByCasoId(casoId);
@@ -47,6 +49,7 @@ public class SuspeitoResource {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_SUSPEITO') and hasAuthority('SCOPE_read')")
     public ResponseEntity<Suspeito> buscarPorId(@PathVariable Long id) {
         return suspeitoRepository.findById(id)
                 .map(ResponseEntity::ok)
@@ -54,6 +57,7 @@ public class SuspeitoResource {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_CADASTRAR_SUSPEITO') and hasAuthority('SCOPE_write')")
     public ResponseEntity<Suspeito> criar(@Valid @RequestBody Suspeito suspeito, HttpServletResponse response) {
         suspeito.setId(null);
         Suspeito salvo = suspeitoRepository.save(suspeito);
@@ -64,6 +68,7 @@ public class SuspeitoResource {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_CADASTRAR_SUSPEITO') and hasAuthority('SCOPE_write')")
     public ResponseEntity<Suspeito> atualizar(@PathVariable Long id, @Valid @RequestBody Suspeito suspeito) {
         Suspeito suspeitoSalvo = suspeitoService.atualizar(id, suspeito);
         return ResponseEntity.ok(suspeitoSalvo);
@@ -71,6 +76,7 @@ public class SuspeitoResource {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('ROLE_REMOVER_SUSPEITO') and hasAuthority('SCOPE_write')")
     public void remover(@PathVariable Long id) {
         suspeitoService.remover(id);
     }

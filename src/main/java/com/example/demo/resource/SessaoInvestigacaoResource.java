@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +37,7 @@ public class SessaoInvestigacaoResource {
     private ApplicationEventPublisher publisher;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_SESSAO') and hasAuthority('SCOPE_read')")
     public List<SessaoInvestigacao> listar(@RequestParam(required = false) Long usuarioId) {
         if (usuarioId != null) {
             return sessaoRepository.findByUsuarioId(usuarioId);
@@ -44,6 +46,7 @@ public class SessaoInvestigacaoResource {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_PESQUISAR_SESSAO') and hasAuthority('SCOPE_read')")
     public ResponseEntity<SessaoInvestigacao> buscarPorId(@PathVariable Long id) {
         return sessaoRepository.findById(id)
                 .map(ResponseEntity::ok)
@@ -51,6 +54,7 @@ public class SessaoInvestigacaoResource {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_INICIAR_SESSAO') and hasAuthority('SCOPE_write')")
     public ResponseEntity<SessaoInvestigacao> criar(@Valid @RequestBody SessaoInvestigacao sessao,
             HttpServletResponse response) {
         SessaoInvestigacao salva = sessaoService.salvar(sessao);

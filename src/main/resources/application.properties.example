@@ -21,8 +21,18 @@ spring.profiles.active=oauth-security
 app.jwt.secret=COLOQUE_UM_SEGREDO_COM_MAIS_DE_32_CARACTERES
 app.jwt.expiration-seconds=900
 app.jwt.refresh-expiration-seconds=86400
-app.oauth.client-id=angular
-app.oauth.client-secret=COLOQUE_O_SEGREDO_DO_CLIENTE
+
+# Clientes OAuth (o secret nao pode ter o caractere arroba)
+app.oauth.clients[0].id=angular
+app.oauth.clients[0].secret=SEU_SEGREDO_DO_CLIENTE_ANGULAR
+app.oauth.clients[0].scopes=read,write
+app.oauth.clients[1].id=mobile
+app.oauth.clients[1].secret=SEU_SEGREDO_DO_CLIENTE_MOBILE
+app.oauth.clients[1].scopes=read
 
 # Cookie do refresh token: use true quando a API rodar com HTTPS
 app.security.https-enabled=false
+
+# CORS: origens que podem chamar a API (separe varias por virgula, sem barra no final)
+# Angular em desenvolvimento usa http://localhost:4200
+app.cors.allowed-origins=http://localhost:4200
